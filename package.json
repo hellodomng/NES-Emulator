@@ -1,0 +1,29 @@
+{
+  "name": "nes-emulator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "webpack-dev-server --inline --progress",
+    "build": "webpack --config webpack.config.js",
+    "test": "webpack --config webpack.test.config.js && node ./test/test-bundle.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sevenskey/NES-Emulator.git"
+  },
+  "author": "sevenskey",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sevenskey/NES-Emulator/issues"
+  },
+  "homepage": "https://github.com/Sevenskey/NES-Emulator#readme",
+  "devDependencies": {
+    "babel-core": "^6.26.0",
+    "babel-loader": "^7.1.4",
+    "babel-preset-env": "^1.6.1",
+    "webpack": "^4.6.0",
+    "webpack-cli": "^2.0.15",
+    "webpack-dev-server": "^3.1.3"
+  }
+}
