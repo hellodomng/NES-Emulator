@@ -1,35 +1,42 @@
 class Ctrl {
-  constructor() {
-    this.test = 1;
+  constructor(title) {
+    this.title = title;
+    this.subtitle = null;
   }
 }
-function describe(title, f) {
-  console.log('[' + title + ']');
 
-  const ctrl = new Ctrl()
-  f.call(ctrl, expect.bind(ctrl));
+function describe(title, f) {
+  const ctrl = new Ctrl(title);
+  console.log(`{${title}}`);
+  f.call(ctrl, it.bind(ctrl), expect.bind(ctrl));
 }
 
 function it(shouldbe, f) {
+  const ctrl = this;
+  console.log(`- it ${shouldbe}`);
   f();
 }
 
 function expect(value) {
-  console.log(this)
+  const ctrl = this;
+  const notPass = '[Not Pass]';
+  function genDes(r, v, value, expectValue) {
+    const isOrNot = r ? 'is' : 'is not';
+    const des = ` ${value} ${isOrNot} to ${v} ${expectValue} ` + (r ? '' : notPass);
+    return des;
+  }
   return {
     tobe: function(expectValue) {
-      console.log(this)
-      return value === expectValue
+      const r = value === expectValue;
+      console.log(genDes(r, 'be', value, expectValue));
     },
     toequal: function(expectValue) {
-      return value === expectValue
+      const r = value === expectValue;
+      console.log(genDes(r, 'equal', value, expectValue));
     },
 
   }
 }
 
-describe('title', function(expect) {
-  it('should be 2', () => {
-    expect(2).tobe(2);
-  })
-})
+export default describe;
+

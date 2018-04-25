@@ -73,7 +73,7 @@ function getROMArrSlice(ROMArr, a, b) {
   return r;
 }
 
-export default {
+export {
   main,
   getSpecificedBit,
   NESMagicMumber
