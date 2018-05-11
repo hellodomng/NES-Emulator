@@ -11,7 +11,7 @@
  * - absolute, X & absolute Y
  * - immediate
  * - relative
- *  
+ * - implied
  * */
 
 // 8-bit register
@@ -29,7 +29,7 @@ let REG_STA;
 let REG_PC;
 
 // Flags from status register
-let F_CARRY, //commonly used
+let F_CARRY,
     F_ZERO,
     F_INTERRUPT,
     F_DECIMAL,
@@ -42,6 +42,39 @@ let curAddr;
 
 // 时钟数
 let cycleCount = 0;
+
+const MASK = {
+  CARRY: 0x01,
+  ZERO: 0x02,
+  INTERRUPT: 0x04,
+  DECIMAL: 0x08,
+  BRK: 0x10,
+  OVERFLOW: 0x40,
+  SIGN: 0x80
+}
+
+function setStatus() {
+  let temp = 0;
+  temp = F_CARRY ? (temp | MASK.CARRY) : temp;
+  temp = F_ZERO ? (temp | MASK.ZERO) : temp;
+  temp = F_INTERRUPT ? (temp | MASK.INTERRUPT) : temp;
+  temp = F_DECIMAL ? (temp | MASK.DECIMAL) : temp;
+  temp = F_BRK ? (temp | MASK.BRK) : temp;
+  temp = F_OVERFLOW ? (temp | MASK.OVERFLOW) : temp;
+  temp = F_SIGN ? (temp | MASK.SIGN) : temp;
+
+  REG_STA = temp;
+}
+
+function detachStatus() {
+  F_CARRY = REG_STA & MASK.CARRY;
+  F_ZERO = (REG_STA & MASK.ZERO) >> 1;
+  F_INTERRUPT = (REG_STA & MASK.INTERRUPT) >> 2;
+  F_DECIMAL = (REG_STA & MASK.DECIMAL) >> 3;
+  F_BRK = (REG_STA & MASK.BRK) >> 4;
+  F_OVERFLOW = (REG_STA & MASK.OVERFLOW) >> 6;
+  F_SIGN = (REG_STA & MASK.SIGN) >> 7;
+}
 
 const setF = {
   // set if the add produced a carry, or if the subtraction don't produced a borrow. also holds bits after a logical shift. (the description from nesdev.com/6502.txt, and it is contrary with nesdev.com/6502guid.txt)
@@ -57,7 +90,7 @@ const setF = {
   // set if the result of the last operation (load/inc/dec/add/sub) was zero
   // ZERO 跟别人写法不一样
   ZERO: function(v) {
-    F_ZERO = temp & 0xFF ? 0 : 1;
+    F_ZERO = (temp & 0xFF) ? 0 : 1;
   },
   // set if bit 7 of the accumulator is set
   SIGN: function(v) {
@@ -71,6 +104,8 @@ const setF = {
   }
 }
 
+// PC 值不能在其中发生改变
+// return 要增加的PC数，如果为 undefined，则增长默认值
 const InstructionAction = {
   // N Z C V
   ADC: function(v) {
@@ -105,55 +140,45 @@ const InstructionAction = {
     }
   },
   BCC: function(offset) {
-    //if (!F_CARRY) {
-      //REG_PC += offset;
-    //}
-    return !F_CARRY;
+    return !F_CARRY ? offset : undefined;
   },
   BCS: function(offset) {
-    //if (F_CARRY) {
-      //REG_PC += offset;
-    //}
-    return F_CARRY;
+    return F_CARRY ? offset : undefined;
   },
   BEQ: function(offset) {
-    //if (F_ZERO) {
-      //REG_PC += offset;
-    //}
-    return F_ZERO;
+    return F_ZERO ? offset : undefined;
   },
   // N Z V
   BIT: function(v) {
+    setF.ZERO(REG_ACC & v);
+    F_SIGN = v >> 7;
+    F_OVERFLOW = (v >> 6) & 0x1;
   },
   BMI: function(offset) {
-    //if (F_SIGN) {
-      //REG_PC += offset;
-    //}
-    return F_SIGN;
+    return F_SIGN ? offset : undefined;
   },
   BNE: function(offset) {
-    //if (!F_ZERO) {
-      //REG_PC += offset;
-    //}
-    return !F_ZERO;
+    return !F_ZERO ? offset : undefined;
   },
   BPL: function(offset) {
-    //if (!F_SIGN) {
-      //REG_PC += offset;
-    //}
-    return !F_SIGN;
+    return !F_SIGN ? offset : undefined;
   },
-  // I
+  // I B
   BRK: function(v) {
+    let temp = REG_PC + 1;
+    PUSH((temp >> 8));
+    PUSH(temp & 0xFF);
+    setStatus();
+    PUSH(REG_STA);
+    F_BRK = 1;
+    F_INTERRUPT = 1;
+    return MEM[0xFFFE] | (MEM[0xFFFF] << 8);
   },
-  BVC: function(v) {
-    //if (!F_OVERFLOW) {
-      //REG_PC += P
-    //}
-    return !F_OVERFLOW;
+  BVC: function(offset) {
+    return !F_OVERFLOW ? offset : undefined;
   },
-  BVS: function(v) {
-    return F_OVERFLOW;
+  BVS: function(offset) {
+    return F_OVERFLOW ? offset : undefined;
   },
   CLC: function(v) {
     F_CARRY = 0;
@@ -238,8 +263,14 @@ const InstructionAction = {
     REG_Y = temp;
   },
   JMP: function(v) {
+    return MEM[PC + 1] | (MEM[PC + 2] << 8);
   },
+  // 实现存疑
   JSR: function(v) {
+    let temp = REG_PC + 3;
+    PUSH(temp >> 8);
+    PUSH(temp & 0xFF);
+    return v;
   },
   // N Z
   LDA: function(v) {
@@ -299,8 +330,7 @@ const InstructionAction = {
   },
   // N Z C
   ROL: function(v) {
-    // 这行可能有问题
-    v = (v << 1) & (0xFE | F_CARRY);
+    v = (v << 1) | F_CARRY;
     setF.CARRY(v, 'add');
     v &= 0xFF;
     setF.ZERO(v);
@@ -313,41 +343,114 @@ const InstructionAction = {
   },
   // N Z C
   ROR: function(v) {
-    v = (v >>> 1) |
+    let temp = (v >>> 1) | (F_CARRY << 7);
+    F_CARRY = v & 0x1;
+    setF.ZERO(temp);
+    setF.SIGN(temp);
+    if (addrMode === 'accumulator') {
+      REG_ACC = temp;
+    } else {
+      MEM[curAddr] = temp;
+    }
   },
+  // From Stack
   RTI: function(v) {
+    REG_STA = PULL();
+    detachStatus();
+    let temp = PULL();
+    temp |= (PULL() << 8);
+    // REG_PC = temp;
+    return temp;
   },
   RTS: function(v) {
+    let temp = PULL();
+    temp |= (PULL() << 8);
+    // REG_PC = temp + 1;
+    return temp + 1;
   },
+  // N Z C V
+  // 这里的实现参考 6502.txt
   SBC: function(v) {
+    let temp = REG_ACC - v - (F_CARRY ? 0 : 1);
+    setF.SIGN(temp);
+    setF.ZERO(temp & 0xFF);
+    setF.OVERFLOW(REG_ACC, v, temp);
+    if (F_DECIMAL) {
+      if ((REG_ACC & 0xF) - (F_CARRY ? 0 : 1) < (v & 0xF)) {
+        temp -= 6;
+      }
+      if (temp > 0x99) {
+        temp -= 0x60;
+      }
+    }
+    setF.CARRY(temp, 'sub');
+    REG_ACC = temp & 0xFF;
   },
+  // C
   SEC: function(v) {
+    F_CARRY = 1;
   },
+  // D
   SED: function(v) {
+    F_DECIMAL = 1;
   },
+  // I
   SEI: function(v) {
+    F_INTERRUPT = 1;
   },
   STA: function(v) {
+    MEM[v] = REG_ACC;
   },
   STX: function(v) {
+    MEM[v] = REG_X;
   },
   STY: function(v) {
+    MEM[v] = REG_Y;
   },
+  // N Z
   TAX: function(v) {
+    setF.ZERO(REG_ACC);
+    setF.SIGN(REG_ACC);
+    REG_X = REG_ACC;
   },
+  // N Z
   TAY: function(v) {
+    setF.ZERO(REG_ACC);
+    setF.SIGN(REG_ACC);
+    REG_Y = REG_ACC;
   },
+  // N Z
   TSX: function(v) {
+    setF.ZERO(REG_SP);
+    setF.SIGN(REG_SP);
+    REG_X = REG_SP;
   },
+  // N Z
   TXA: function(v) {
+    setF.ZERO(REG_X);
+    setF.SIGN(REG_X);
+    REG_ACC = REG_X;
   },
   TXS: function(v) {
+    REG_SP = REG_X;
   },
+  // N Z
   TYA: function(v) {
+    setF.ZERO(REG_Y);
+    setF.SIGN(REG_Y);
+    REG_ACC = REG_Y;
   }
 }
 
-const InstructionSet = {
+function PULL() {
+  return MEM[REG_SP++];
+}
+
+function PUSH(v) {
+  MEM[--REG_SP] = v;
+}
+
+const OpcodeSet = {
   /* ADC 8 */
   '69': { inst: 'ADC', bytes: 2, cycles: 2, mode: 'immediate' },
   '65': { inst: 'ADC', bytes: 2, cycles: 3, mode: 'zeroPage' },
@@ -434,7 +537,7 @@ const InstructionSet = {
   '40': { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absolute' },
   '50': { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absoluteX', add: 'pageBoundary' },
   '59': { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absoluteY', add: 'pageBoundary' },
-  '41': { inst: 'EOR', bytes: 2, cycles: 6, mode: 'indirectX', }
+  '41': { inst: 'EOR', bytes: 2, cycles: 6, mode: 'indirectX', },
   '51': { inst: 'EOR', bytes: 2, cycles: 5, mode: 'indirect_Y', add: 'pageBoundary' },
   /* INC 4*/
   'E6': { inst: 'INC', bytes: 2, cycles: 5, mode: 'zeroPage' },
@@ -485,7 +588,7 @@ const InstructionSet = {
   '15': { inst: 'ORA', bytes: 2, cycles: 4, mode: 'zeroPageX' },
   '0D': { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absolute' },
   '1D': { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absoluteX', add: 'pageCrossing' },
-  '19': { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absoluteY', 'pageCrossing' },
+  '19': { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absoluteY', add: 'pageCrossing' },
   '01': { inst: 'ORA', bytes: 2, cycles: 6, mode: 'indirectX' },
   '11': { inst: 'ORA', bytes: 2, cycles: 5, mode: 'indirect_Y' },
   /* PHA 1 */
@@ -564,20 +667,8 @@ const addExtraCycles = {
   nextPage: 2
 }
 
-function setStatus() {
-}
-
-function detachStatus() {
-  F_CARRY = REG_STA & 0x01;
-  F_ZERO = (REG_STA & 0x02) >> 1;
-  F_INTERRUPT = (REG_STA & 0x04) >> 2;
-  F_DECIMAL = (REG_STA & 0x08) >> 3;
-  F_BRK = (REG_STA & 0x10) >> 4;
-  F_OVERFLOW = (REG_STA & 0x40) >> 6;
-  F_SIGN = (REG_STA & 0x80) >> 7;
-}
-
 const CPU = {
+  ROM: null,
   reset: function() {
     REG_ACC = 0;
     REG_X = 0;
@@ -586,11 +677,38 @@ const CPU = {
     REG_PC = 0x8000 - 1;
     REG_STA = 0b00101000;//0x28;
   },
-  setFlags: function() {
-  },
-  getOpcode: function() {
-  },
   run: function(opcode) {
+    if (!ROM) {
+      throw new Error('没有ROM');
+    }
+    this.reset();
+  },
+  getSOpcode: function(index) {
+    return this.ROM[index];
+  },
+  getLOpcode: function(index) {
+    return this.ROM[index] | (this.ROM[index + 1] << 8);
+  },
+  execute: function() {
+    let inst = OpcodeSet[getSOpcode(REG_PC)];
+    let operand;
+    if (inst.bytes === 1) {
+      operand = null;
+    } else if (inst.bytes === 2) {
+      operand = getSOpcode(REG_PC + 1);
+    } else {
+      operand = getLOpcode(REG_PC + 1);
+    }
+    let value = Operand[inst.mode](operand)
+    let PCOffset = InstructionAction[inst.inst](value, inst.mode);
+    if (PCOffset !== undefined) {
+      REG_PC += PCOffset;
+    } else {
+      REG_PC += inst.bytes;
+    }
+    // 未处理 same page 等特殊情况
+    //cycleCount += inst.cycles;
+    return inst.cycles;
   }
 }
 
@@ -651,6 +769,7 @@ const Operand = {
     return offset;
   },
   accumulator: function(v) {
+    return REG_ACC;
   },
   implied: function(v) {
   }
@@ -659,3 +778,5 @@ const Operand = {
 /*
  * Decremented every time a byte is pushed onto the stack, and incremented when a byte is popped off the stack.
  */
+
+export default CPU;
