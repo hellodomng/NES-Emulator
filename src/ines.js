@@ -11,10 +11,36 @@ const iNES = (function() {
 
   const NESMagicMumber = 0x4e45531a;
 
-  function main(rawROM) {
+  function newCartridge(rawROM) {
+    const resolvedROM = getResolvedROM(rawROM);
+    const header = resolvedROM.header;
+    const content = resolvedROM.content;
+    let trainer, prg, chr;
+    if (header.trainer) {
+      trainer = content.splice(0, 512);
+    }
+    prg = content.splice(0, header.PRGNum * 16384);
+    console.log(prg[16383])
+    chr = content.splice(0, header.CHRNum * 8192);
+    if (!header.CHRNum) {
+      chr = content.splice(0, 8192);
+    }
+
+    return {
+      sram: new Array(0x2000),
+      prg,
+      chr,
+      mapper: header.mapperType,
+      mirror: header.mirrorType,
+      battery: header.batteryBackedRAM
+    };
+  }
+
+  function getResolvedROM(rawROM) {
     const ROMArr = getRomArr(rawROM);
     const HeaderInfo = getHeaderInfo(ROMArr);
 
+    console.log(HeaderInfo.NESMagicMumber);
     if (HeaderInfo.NESMagicMumber !== NESMagicMumber) {
       throw new Error('This file is not a iNES file.');
     }
@@ -63,6 +89,7 @@ const iNES = (function() {
   }
 
   function getROMContent(ROMArr) {
+    console.log(ROMArr.length);
     return ROMArr.slice(HeaderFormat[HeaderFormat.length-1][1] + 1);
   }
 
@@ -75,7 +102,7 @@ const iNES = (function() {
   }
 
   return {
-    newCartridge: main,
+    newCartridge: newCartridge,
     getSpecificedBit,
     NESMagicMumber
   };

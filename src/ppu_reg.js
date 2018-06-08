@@ -17,7 +17,7 @@ const newPPUReg = (function() {
       let mask = 0;
       length = length ? length : 1;
       for (let i = head; i <= head + length; i++) {
-        mask += Math.power(2, i);
+        mask += Math.pow(2, i);
       }
       return (this.v & mask) >> head;
     }
@@ -25,16 +25,16 @@ const newPPUReg = (function() {
       let mask = 0;
       length = length ? length : 1;
       for (let i = head; i <= head + length; i++) {
-        mask += Math.power(2, i);
+        mask += Math.pow(2, i);
       }
       this.v = this.v & (~mask) | (value << head);
     }
     setBit(index) {
-      let mask = Math.power(2, index);
+      let mask = Math.pow(2, index);
       this.v |= mask;
     }
     resetBit(index) {
-      let mask = ~Math.power(2, index);
+      let mask = ~Math.pow(2, index);
       this.v &= mask;
     }
     inc() {

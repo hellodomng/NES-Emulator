@@ -12,7 +12,7 @@
 //import newReg from './PPUregister.js';
 //import Screen from './screen.js';
 
-const PPU = function(colorTable, newReg, Screen) {
+const PPU = function(colorTable, newReg, Screen, CPU) {
   /*** Counter ***/
   let Scanline; //int
   let Cycle; // int
@@ -56,7 +56,7 @@ const PPU = function(colorTable, newReg, Screen) {
 
   /*** NMI flags ***/
   let nmiOccurred; //boolean
-  let nmiOutput; //boolean
+  //let nmiOutput; //boolean
   let nmiPrevious; //boolean
   let nmiDelay; //8-bit
 
@@ -80,20 +80,20 @@ const PPU = function(colorTable, newReg, Screen) {
 
   /*** PPU basic operation ***/
   function Read(addr) {
-    return mem.PPUMEM.Read(addr);
+    return PPU.MEM.read(addr);
   }
 
   function Write(addr) {
-    mem.PPUMEM.Write(addr);
+    PPU.MEM.write(addr);
   }
 
   function Reset() {
     Cycle = 340;
     Scanline = 240;
     Frame = 0;
-    REG_PPUCTRL.write(0);
-    REG_PPUMASK.write(0);
-    REG_OAMADDR.write(0);
+    writeControl(0);
+    writeMask(0);
+    writeOAMAddr(0);
   }
 
   function readRegister(addr) {
@@ -244,9 +244,12 @@ const PPU = function(colorTable, newReg, Screen) {
 
   // $4014
   function wirteDMA(value) {
-    const head = value << 8,
-      tail = head + 256;
-    OAM = mem.CPUMEM.slice(head, tail);
+    let addr = value << 8;
+    for (let i = 0; i < 256; i++) {
+      OAM[oamAddr] = CPU.MEM.read(addr);
+      oamAddr++;
+      addr++;
+    }
 
     return 513;
   }
@@ -497,6 +500,7 @@ const PPU = function(colorTable, newReg, Screen) {
       nmiDelay--;
       if ((! nmiDelay) && nmiOutput && nmiOccurred) {
         // triggerNMI
+        CPU.triggerNMI();
       }
     }
     if (flagShowBackground || flagShowSprites) {
@@ -578,7 +582,11 @@ const PPU = function(colorTable, newReg, Screen) {
     }
   }
 
-  return {
+  function getFrame() {
+    return Frame;
+  }
+
+  const PPU = {
     register: {
       write: writeRegister,
       read: readRegister
@@ -588,7 +596,11 @@ const PPU = function(colorTable, newReg, Screen) {
       read: writePalette
     },
     nameTableData,
-    PPUCycle: cycle,
+    cycle: cycle,
+    getFrame: getFrame,
+    reset: Reset
   }
+
+  return PPU;
 }
 

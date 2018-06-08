@@ -1,9 +1,10 @@
-const Memory = function(PPU, Cartridge) {
+const Memory = function(PPU, Cartridge, Mapper) {
   const CPUMEM = new Array(0x2000);
 
   function CPUMEMRead(addr) {
     switch(true) {
       case addr < 0x2000:
+        console.log(CPUMEM)
         return CPUMEM[addr % 0x0800];
       case addr < 0x4000:
         return PPU.register.read(0x2000 + addr % 8);
@@ -19,15 +20,18 @@ const Memory = function(PPU, Cartridge) {
         return;
       case addr >= 0x6000:
         // PRG-ROM
-        return ;
+        console.log('CPU-Read PRG-ROM: ' + addr + '->' + Mapper.Read(addr))
+        return Mapper.Read(addr);
       default:
         throw new Error ('unhandled CPU memory read at address:' + addr);
     }
   }
 
   function CPUMEMWrite(addr, value) {
+    console.log('Write CPU mem: ' + addr)
     switch(true) {
       case addr < 0x2000:
+        console.log('Write CPU RAM: ' + addr)
         CPUMEM[addr % 0x0800] = value; break;
       case addr < 0x4000:
         PPU.register.write(0x2000 + addr % 8, value); break;
@@ -44,9 +48,10 @@ const Memory = function(PPU, Cartridge) {
         break;
       case addr >= 0x6000:
         //写mapper
+        Mapper.Write(addr, value);
         break;
       default:
-        throw new Error('unhandled CPU memory read at address: ' + addr);
+        throw new Error('unhandled CPU memory write at address: ' + addr);
     }
   }
 
@@ -55,10 +60,9 @@ const Memory = function(PPU, Cartridge) {
 
   function PPUMEMRead(addr) {
     addr = addr % 0x4000;
-    switch(addr) {
+    switch(true) {
       case addr < 0x2000:
-        // mapper read
-        return ;
+        return Mapper.Read(addr);
       case addr < 0x3F00:
         let mode = Cartridge.mirrorType;
         return PPU.nameTableData[MirrorAddr(mode, addr) % 2048];
@@ -71,9 +75,9 @@ const Memory = function(PPU, Cartridge) {
 
   function PPUMEMWrite(addr, value) {
     addr = addr % 0x4000;
-    switch(addr) {
+    switch(true) {
       case addr < 0x2000:
-        // mapper write
+        Mapper.Write(addr, value);
         break;
       case addr < 0x3F00:
         let mode = Cartridge.mirrorType;
@@ -104,12 +108,12 @@ const Memory = function(PPU, Cartridge) {
 
   return {
     PPUMEM: {
-      Read: PPUMEMRead,
-      Write: PPUMEMWrite
+      read: PPUMEMRead,
+      write: PPUMEMWrite
     },
     CPUMEM: {
-      Read: CPUMEMRead,
-      Write: CPUMEMWrite
+      read: CPUMEMRead,
+      write: CPUMEMWrite
     }
   }
 }

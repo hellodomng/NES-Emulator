@@ -55,6 +55,7 @@ const CPU = function(CPUMEM) {
   const NMI_Vector = 0xFFFA;
   const IRQ_Vector = 0xFFFE;
   const Reset_Vector = 0xFFFC;
+  const interruptNone = 0;
   const interruptNMI = 1;
   const interruptIRQ = 2;
   const InterruptSet = [
@@ -110,7 +111,8 @@ const CPU = function(CPUMEM) {
     // set if the result of the last operation (load/inc/dec/add/sub) was zero
     // ZERO 跟别人写法不一样
     ZERO: function(v) {
-      F_ZERO = (temp & 0xFF) ? 0 : 1;
+      //F_ZERO = (v & 0xFF) ? 0 : 1;
+      F_ZERO = (v === 0) ? 1 : 0;
     },
     // set if bit 7 of the accumulator is set
     SIGN: function(v) {
@@ -147,15 +149,18 @@ const CPU = function(CPUMEM) {
     },
     // N Z C
     ASL: function(v, addrMode) {
-      v <<= 1;
-      setF.CARRY(v, 'add');
-      v &= 0xFF;
-      setF.SIGN(v);
-      setF.ZERO(v);
       // stroe v in memory or accumulator depending on addressing mode
       if (addrMode === 'accumulator') {
-        REG_ACC = v;
+        F_CARRY = (REG_ACC >> 7) & 1;
+        REG_ACC <<= 1;
+        setF.SIGN(REG_ACC);
+        setF.ZERO(REG_ACC);
       } else {
+        v <<= 1;
+        setF.CARRY(v, 'add');
+        v &= 0xFF;
+        setF.SIGN(v);
+        setF.ZERO(v);
         writeMem(curAddr, v);
       }
     },
@@ -279,7 +284,7 @@ const CPU = function(CPUMEM) {
       REG_Y = temp;
     },
     JMP: function(v) {
-      return readMem(PC - 2) | (readMem(PC - 1) << 8);
+      return readMem(REG_PC - 2) | (readMem(REG_PC - 1) << 8);
     },
     // 实现存疑
     JSR: function(v) {
@@ -412,13 +417,13 @@ const CPU = function(CPUMEM) {
       F_INTERRUPT = 1;
     },
     STA: function(v) {
-      writeMem(v, REG_ACC);
+      writeMem(curAddr, REG_ACC);
     },
     STX: function(v) {
-      writeMem(v, REG_X);
+      writeMem(curAddr, REG_X);
     },
-    STY: function(v) {
-      writeMem(v, REG_Y);
+    STY: function(v){
+      writeMem(curAddr, REG_Y);
     },
     // N Z
     TAX: function(v) {
@@ -460,6 +465,7 @@ const CPU = function(CPUMEM) {
   }
 
   function PUSH(v) {
+    console.log('REG_SP: ' + REG_SP)
     writeMem(--REG_SP, v);
   }
 
@@ -481,7 +487,7 @@ const CPU = function(CPUMEM) {
     PUSH16(REG_PC);
     PUSH(REG_STA);
 
-    return NMI_Vector;
+    return Read16(NMI_Vector);
   }
 
   function IRQ() {
@@ -490,7 +496,7 @@ const CPU = function(CPUMEM) {
     PUSH(REG_STA);
     F_INTERRUPT = 1;
 
-    return IRQ_Vector;
+    return Read16(IRQ_Vector);
   }
 
   function triggerNMI() {
@@ -502,212 +508,212 @@ const CPU = function(CPUMEM) {
 
   const OpcodeSet = {
     /* ADC 8 */
-    '69': { inst: 'ADC', bytes: 2, cycles: 2, mode: 'immediate' },
-    '65': { inst: 'ADC', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    '75': { inst: 'ADC', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    '60': { inst: 'ADC', bytes: 3, cycles: 4, mode: 'absolute' },
-    '70': { inst: 'ADC', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
-    '79': { inst: 'ADC', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
-    '61': { inst: 'ADC', bytes: 2, cycles: 6, mode: 'indirectX' },
-    '71': { inst: 'ADC', bytes: 2, cycles: 5, mode: 'indirect_Y', pageCrossing: 1 },
+    0x69: { inst: 'ADC', bytes: 2, cycles: 2, mode: 'immediate' },
+    0x65: { inst: 'ADC', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0x75: { inst: 'ADC', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0x6D: { inst: 'ADC', bytes: 3, cycles: 4, mode: 'absolute' },
+    0x7D: { inst: 'ADC', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
+    0x79: { inst: 'ADC', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
+    0x61: { inst: 'ADC', bytes: 2, cycles: 6, mode: 'indirectX' },
+    0x71: { inst: 'ADC', bytes: 2, cycles: 5, mode: 'indirect_Y', pageCrossing: 1 },
     /* AND 8 */
-    '29': { inst: 'AND', bytes: 2, cycles: 2, mode: 'immediate' },
-    '25': { inst: 'AND', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    '35': { inst: 'AND', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    '2D': { inst: 'AND', bytes: 3, cycles: 4, mode: 'absolute' },
-    '3D': { inst: 'AND', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
-    '39': { inst: 'AND', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
-    '21': { inst: 'AND', bytes: 2, cycles: 6, mode: 'indirectX' },
-    '31': { inst: 'AND', bytes: 2, cycles: 5, mode: 'indirect_Y' },
+    0x29: { inst: 'AND', bytes: 2, cycles: 2, mode: 'immediate' },
+    0x25: { inst: 'AND', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0x35: { inst: 'AND', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0x2D: { inst: 'AND', bytes: 3, cycles: 4, mode: 'absolute' },
+    0x3D: { inst: 'AND', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
+    0x39: { inst: 'AND', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
+    0x21: { inst: 'AND', bytes: 2, cycles: 6, mode: 'indirectX' },
+    0x31: { inst: 'AND', bytes: 2, cycles: 5, mode: 'indirect_Y' },
     /* ASL 5 */
-    '0A': { inst: 'ASL', bytes: 1, cycles: 2, mode: 'accumulator' },
-    '06': { inst: 'ASL', bytes: 2, cycles: 5, mode: 'zeroPage' },
-    '16': { inst: 'ASL', bytes: 2, cycles: 6, mode: 'zeroPageX' },
-    '0E': { inst: 'ASL', bytes: 3, cycles: 6, mode: 'absolute' },
-    '1E': { inst: 'ASL', bytes: 3, cycles: 7, mode: 'absoluteX' },
+    0x0A: { inst: 'ASL', bytes: 1, cycles: 2, mode: 'accumulator' },
+    0x06: { inst: 'ASL', bytes: 2, cycles: 5, mode: 'zeroPage' },
+    0x16: { inst: 'ASL', bytes: 2, cycles: 6, mode: 'zeroPageX' },
+    0x0E: { inst: 'ASL', bytes: 3, cycles: 6, mode: 'absolute' },
+    0x1E: { inst: 'ASL', bytes: 3, cycles: 7, mode: 'absoluteX' },
     /* BCC 1 */
-    '90': { inst: 'BCC', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
+    0x90: { inst: 'BCC', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
     /* BCS 1 */
-    'B0': { inst: 'BCS', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
+    0xB0: { inst: 'BCS', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
     /* BEQ 1 */
-    'F0': { inst: 'BEQ', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
+    0xF0: { inst: 'BEQ', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
     /* BIT 2 */
-    '24': { inst: 'BIT', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    '2C': { inst: 'BIT', bytes: 3, cycles: 4, mode: 'absolute' },
+    0x24: { inst: 'BIT', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0x2C: { inst: 'BIT', bytes: 3, cycles: 4, mode: 'absolute' },
     /* BMI 1 */
-    '30': { inst: 'BMI', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
+    0x30: { inst: 'BMI', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
     /* BNE 1 */
-    'D0': { inst: 'BNE', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
+    0xD0: { inst: 'BNE', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
     /* BPL 1 */
-    '10': { inst: 'BPL', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
+    0x10: { inst: 'BPL', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
     /* BRK 1 */
-    '00': { inst: 'BRK', bytes: 1, cycles: 7, mode: 'implied' },
+    0x00: { inst: 'BRK', bytes: 1, cycles: 7, mode: 'implied' },
     /* BVC 1 */
-    '50': { inst: 'BVC', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
+    0x50: { inst: 'BVC', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
     /* BVS 1 */
-    '70': { inst: 'BVS', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
+    0x70: { inst: 'BVS', bytes: 2, cycles: 2, mode: 'relative', samePage: 1, differentPage: 2 },
     /* CLC 1 */
-    '18': { inst: 'CLC', bytes: 1, cycles: 2, mode: 'implied' },
+    0x18: { inst: 'CLC', bytes: 1, cycles: 2, mode: 'implied' },
     /* CLD 1 */
-    'D8': { inst: 'CLD', bytes: 1, cycles: 2, mode: 'implied' },
+    0xD8: { inst: 'CLD', bytes: 1, cycles: 2, mode: 'implied' },
     /* CLI 1 */
-    '58': { inst: 'CLI', bytes: 1, cycles: 2, mode: 'implied' },
+    0x58: { inst: 'CLI', bytes: 1, cycles: 2, mode: 'implied' },
     /* CLV 1 */
-    'B8': { inst: 'CLV', bytes: 1, cycles: 2, mode: 'implied' },
+    0xB8: { inst: 'CLV', bytes: 1, cycles: 2, mode: 'implied' },
     /* CMP 8 */
-    'C9': { inst: 'CMP', bytes: 2, cycles: 2, mode: 'immediate' },
-    'C5': { inst: 'CMP', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    'D5': { inst: 'CMP', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    'CD': { inst: 'CMP', bytes: 3, cycles: 4, mode: 'absolute' },
-    'DD': { inst: 'CMP', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
-    'D9': { inst: 'CMP', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
-    'C1': { inst: 'CMP', bytes: 2, cycles: 6, mode: 'indirectX', },
-    'D1': { inst: 'CMP', bytes: 2, cycles: 5, mode: 'indirect_Y', pageCrossing: 1 },
+    0xC9: { inst: 'CMP', bytes: 2, cycles: 2, mode: 'immediate' },
+    0xC5: { inst: 'CMP', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0xD5: { inst: 'CMP', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0xCD: { inst: 'CMP', bytes: 3, cycles: 4, mode: 'absolute' },
+    0xDD: { inst: 'CMP', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
+    0xD9: { inst: 'CMP', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
+    0xC1: { inst: 'CMP', bytes: 2, cycles: 6, mode: 'indirectX', },
+    0xD1: { inst: 'CMP', bytes: 2, cycles: 5, mode: 'indirect_Y', pageCrossing: 1 },
     /* CPX 3 */
-    'E0': { inst: 'CPX', bytes: 2, cycles: 2, mode: 'immediate' },
-    'E4': { inst: 'CPX', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    'EC': { inst: 'CPX', bytes: 3, cycles: 4, mode: 'absolute' },
+    0xE0: { inst: 'CPX', bytes: 2, cycles: 2, mode: 'immediate' },
+    0xE4: { inst: 'CPX', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0xEC: { inst: 'CPX', bytes: 3, cycles: 4, mode: 'absolute' },
     /* CPY 3 */
-    'C0': { inst: 'CPY', bytes: 2, cycles: 2, mode: 'immediate' },
-    'C4': { inst: 'CPY', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    'CC': { inst: 'CPY', bytes: 3, cycles: 4, mode: 'absolute' },
+    0xC0: { inst: 'CPY', bytes: 2, cycles: 2, mode: 'immediate' },
+    0xC4: { inst: 'CPY', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0xCC: { inst: 'CPY', bytes: 3, cycles: 4, mode: 'absolute' },
     /* DEC 4 */
-    'C6': { inst: 'DEC', bytes: 2, cycles: 5, mode: 'zeroPage' },
-    'D6': { inst: 'DEC', bytes: 2, cycles: 6, mode: 'zeroPageX' },
-    'CE': { inst: 'DEC', bytes: 3, cycles: 6, mode: 'absolute' },
-    'DE': { inst: 'DEC', bytes: 3, cycles: 7, mode: 'absoluteX' },
+    0xC6: { inst: 'DEC', bytes: 2, cycles: 5, mode: 'zeroPage' },
+    0xD6: { inst: 'DEC', bytes: 2, cycles: 6, mode: 'zeroPageX' },
+    0xCE: { inst: 'DEC', bytes: 3, cycles: 6, mode: 'absolute' },
+    0xDE: { inst: 'DEC', bytes: 3, cycles: 7, mode: 'absoluteX' },
     /* DEX 1 */
-    'CA': { inst: 'DEX', bytes: 1, cycles: 2, mode: 'implied' },
+    0xCA: { inst: 'DEX', bytes: 1, cycles: 2, mode: 'implied' },
     /* DEY 1 */
-    '88': { inst: 'DEY', bytes: 1, cycles: 2, mode: 'implied' },
+    0x88: { inst: 'DEY', bytes: 1, cycles: 2, mode: 'implied' },
     /* EOR 8 */
-    '49': { inst: 'EOR', bytes: 2, cycles: 2, mode: 'immediate' },
-    '45': { inst: 'EOR', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    '55': { inst: 'EOR', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    '40': { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absolute' },
-    '50': { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
-    '59': { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
-    '41': { inst: 'EOR', bytes: 2, cycles: 6, mode: 'indirectX', },
-    '51': { inst: 'EOR', bytes: 2, cycles: 5, mode: 'indirect_Y', pageCrossing: 1 },
+    0x49: { inst: 'EOR', bytes: 2, cycles: 2, mode: 'immediate' },
+    0x45: { inst: 'EOR', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0x55: { inst: 'EOR', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0x4D: { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absolute' },
+    0x5D: { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
+    0x59: { inst: 'EOR', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
+    0x41: { inst: 'EOR', bytes: 2, cycles: 6, mode: 'indirectX', },
+    0x51: { inst: 'EOR', bytes: 2, cycles: 5, mode: 'indirect_Y', pageCrossing: 1 },
     /* INC 4*/
-    'E6': { inst: 'INC', bytes: 2, cycles: 5, mode: 'zeroPage' },
-    'F6': { inst: 'INC', bytes: 2, cycles: 6, mode: 'zeroPageX' },
-    'EE': { inst: 'INC', bytes: 3, cycles: 6, mode: 'absolute' },
-    'FE': { inst: 'INC', bytes: 3, cycles: 7, mode: 'absoluteX' },
+    0xE6: { inst: 'INC', bytes: 2, cycles: 5, mode: 'zeroPage' },
+    0xF6: { inst: 'INC', bytes: 2, cycles: 6, mode: 'zeroPageX' },
+    0xEE: { inst: 'INC', bytes: 3, cycles: 6, mode: 'absolute' },
+    0xFE: { inst: 'INC', bytes: 3, cycles: 7, mode: 'absoluteX' },
     /* INX 1 */
-    'E8': { inst: 'INX', bytes: 1, cycles: 2, mode: 'implied' },
+    0xE8: { inst: 'INX', bytes: 1, cycles: 2, mode: 'implied' },
     /* INY 1 */
-    'C8': { inst: 'INY', bytes: 1, cycles: 2, mode: 'implied' },
+    0xC8: { inst: 'INY', bytes: 1, cycles: 2, mode: 'implied' },
     /* JMP 2 */
-    '4C': { inst: 'JMP', bytes: 3, cycles: 3, mode: 'absolute' },
-    '6C': { inst: 'JMP', bytes: 3, cycles: 5, mode: 'indirect' },
+    0x4C: { inst: 'JMP', bytes: 3, cycles: 3, mode: 'absolute' },
+    0x6C: { inst: 'JMP', bytes: 3, cycles: 5, mode: 'indirect' },
     /* JSR 1 */
-    '20': { inst: 'JSP', bytes: 3, cycles: 6, mode: 'absolute' },
+    0x20: { inst: 'JSR', bytes: 3, cycles: 6, mode: 'absolute' },
     /* LDA 8 */
-    'A9': { inst: 'LDA', bytes: 2, cycles: 2, mode: 'immediate' },
-    'A5': { inst: 'LDA', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    'B5': { inst: 'LDA', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    'AD': { inst: 'LDA', bytes: 3, cycles: 4, mode: 'absolute' },
-    'BD': { inst: 'LDA', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
-    'B9': { inst: 'LDA', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
-    'A1': { inst: 'LDA', bytes: 2, cycles: 6, mode: 'indirectX' },
-    'B1': { inst: 'LDA', bytes: 2, cycles: 5, mode: 'indirect_Y', pageCrossing :1 },
+    0xA9: { inst: 'LDA', bytes: 2, cycles: 2, mode: 'immediate' },
+    0xA5: { inst: 'LDA', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0xB5: { inst: 'LDA', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0xAD: { inst: 'LDA', bytes: 3, cycles: 4, mode: 'absolute' },
+    0xBD: { inst: 'LDA', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
+    0xB9: { inst: 'LDA', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
+    0xA1: { inst: 'LDA', bytes: 2, cycles: 6, mode: 'indirectX' },
+    0xB1: { inst: 'LDA', bytes: 2, cycles: 5, mode: 'indirect_Y', pageCrossing :1 },
     /* LDX 5 */
-    'A2': { inst: 'LDX', bytes: 2, cycles: 2, mode: 'immediate' },
-    'A6': { inst: 'LDX', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    'B6': { inst: 'LDX', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    'AE': { inst: 'LDX', bytes: 3, cycles: 4, mode: 'absolute' },
-    'BE': { inst: 'LDX', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
+    0xA2: { inst: 'LDX', bytes: 2, cycles: 2, mode: 'immediate' },
+    0xA6: { inst: 'LDX', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0xB6: { inst: 'LDX', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0xAE: { inst: 'LDX', bytes: 3, cycles: 4, mode: 'absolute' },
+    0xBE: { inst: 'LDX', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
     /* LDY 5 */
-    'A0': { inst: 'LDY', bytes: 2, cycles: 2, mode: 'immediate' },
-    'A4': { inst: 'LDY', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    'B4': { inst: 'LDY', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    'AC': { inst: 'LDY', bytes: 3, cycles: 4, mode: 'absolute' },
-    'BC': { inst: 'LDY', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
+    0xA0: { inst: 'LDY', bytes: 2, cycles: 2, mode: 'immediate' },
+    0xA4: { inst: 'LDY', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0xB4: { inst: 'LDY', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0xAC: { inst: 'LDY', bytes: 3, cycles: 4, mode: 'absolute' },
+    0xBC: { inst: 'LDY', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
     /* LSR 5 */
-    '4A': { inst: 'LSR', bytes: 1, cycles: 2, mode: 'accumulator' },
-    '46': { inst: 'LSR', bytes: 2, cycles: 5, mode: 'zeroPage' },
-    '56': { inst: 'LSR', bytes: 2, cycles: 6, mode: 'zeroPageX' },
-    '4E': { inst: 'LSR', bytes: 3, cycles: 6, mode: 'absolute' },
-    '5E': { inst: 'LSR', bytes: 3, cycles: 7, mode: 'absoluteX' },
+    0x4A: { inst: 'LSR', bytes: 1, cycles: 2, mode: 'accumulator' },
+    0x46: { inst: 'LSR', bytes: 2, cycles: 5, mode: 'zeroPage' },
+    0x56: { inst: 'LSR', bytes: 2, cycles: 6, mode: 'zeroPageX' },
+    0x4E: { inst: 'LSR', bytes: 3, cycles: 6, mode: 'absolute' },
+    0x5E: { inst: 'LSR', bytes: 3, cycles: 7, mode: 'absoluteX' },
     /* NOP 1 */
-    'EA': { inst: 'NOP', bytes: 1, cycles: 2, mode: 'implied' },
+    0xEA: { inst: 'NOP', bytes: 1, cycles: 2, mode: 'implied' },
     /* ORA 8 */
-    '09': { inst: 'ORA', bytes: 2, cycles: 2, mode: 'immediate' },
-    '05': { inst: 'ORA', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    '15': { inst: 'ORA', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    '0D': { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absolute' },
-    '1D': { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
-    '19': { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
-    '01': { inst: 'ORA', bytes: 2, cycles: 6, mode: 'indirectX' },
-    '11': { inst: 'ORA', bytes: 2, cycles: 5, mode: 'indirect_Y' },
+    0x09: { inst: 'ORA', bytes: 2, cycles: 2, mode: 'immediate' },
+    0x05: { inst: 'ORA', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0x15: { inst: 'ORA', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0x0D: { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absolute' },
+    0x1D: { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
+    0x19: { inst: 'ORA', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
+    0x01: { inst: 'ORA', bytes: 2, cycles: 6, mode: 'indirectX' },
+    0x11: { inst: 'ORA', bytes: 2, cycles: 5, mode: 'indirect_Y' },
     /* PHA 1 */
-    '48': { inst: 'PHA', bytes: 1, cycles: 3, mode: 'implied' },
+    0x48: { inst: 'PHA', bytes: 1, cycles: 3, mode: 'implied' },
     /* PHP 1 */
-    '08': { inst: 'PHP', bytes: 1, cycles: 3, mode: 'implied' },
+    0x08: { inst: 'PHP', bytes: 1, cycles: 3, mode: 'implied' },
     /* PLA 1 */
-    '68': { inst: 'PLA', bytes: 1, cycles: 4, mode: 'implied' },
+    0x68: { inst: 'PLA', bytes: 1, cycles: 4, mode: 'implied' },
     /* PLP 1 */
-    '28': { inst: 'PLP', bytes: 1, cycles: 4, mode: 'implied' },
+    0x28: { inst: 'PLP', bytes: 1, cycles: 4, mode: 'implied' },
     /* ROL 5 */
-    '2A': { inst: 'ROL', bytes: 1, cycles: 2, mode: 'accumulator' },
-    '26': { inst: 'ROL', bytes: 2, cycles: 5, mode: 'zeroPage' },
-    '36': { inst: 'ROL', bytes: 2, cycles: 6, mode: 'zeroPageX' },
-    '2E': { inst: 'ROL', bytes: 3, cycles: 6, mode: 'absolute' },
-    '3E': { inst: 'ROL', bytes: 3, cycles: 7, mode: 'absoluteX' },
+    0x2A: { inst: 'ROL', bytes: 1, cycles: 2, mode: 'accumulator' },
+    0x26: { inst: 'ROL', bytes: 2, cycles: 5, mode: 'zeroPage' },
+    0x36: { inst: 'ROL', bytes: 2, cycles: 6, mode: 'zeroPageX' },
+    0x2E: { inst: 'ROL', bytes: 3, cycles: 6, mode: 'absolute' },
+    0x3E: { inst: 'ROL', bytes: 3, cycles: 7, mode: 'absoluteX' },
     /* ROR 5 */
-    '6A': { inst: 'ROR', bytes: 1, cycles: 2, mode: 'accumulator' },
-    '66': { inst: 'ROR', bytes: 2, cycles: 5, mode: 'zeroPage' },
-    '76': { inst: 'ROR', bytes: 2, cycles: 6, mode: 'zeroPageX' },
-    '6E': { inst: 'ROR', bytes: 3, cycles: 6, mode: 'absolute' },
-    '7E': { inst: 'ROR', bytes: 3, cycles: 7, mode: 'absoluteX' },
+    0x6A: { inst: 'ROR', bytes: 1, cycles: 2, mode: 'accumulator' },
+    0x66: { inst: 'ROR', bytes: 2, cycles: 5, mode: 'zeroPage' },
+    0x76: { inst: 'ROR', bytes: 2, cycles: 6, mode: 'zeroPageX' },
+    0x6E: { inst: 'ROR', bytes: 3, cycles: 6, mode: 'absolute' },
+    0x7E: { inst: 'ROR', bytes: 3, cycles: 7, mode: 'absoluteX' },
     /* RTI 1 */
-    '4D': { inst: 'RTI', bytes: 1, cycles: 6, mode: 'implied' },
+    0x40: { inst: 'RTI', bytes: 1, cycles: 6, mode: 'implied' },
     /* RTS 1 */
-    '60': { inst: 'RTS', bytes: 1, cycles: 6, mode: 'implied' },
+    0x60: { inst: 'RTS', bytes: 1, cycles: 6, mode: 'implied' },
     /* SBC 8 */
-    'E9': { inst: 'SBC', bytes: 2, cycles: 2, mode: 'immediate' },
-    'E5': { inst: 'SBC', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    'F5': { inst: 'SBC', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    'ED': { inst: 'SBC', bytes: 3, cycles: 4, mode: 'absolute' },
-    'FD': { inst: 'SBC', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
-    'F9': { inst: 'SBC', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
-    'E1': { inst: 'SBC', bytes: 2, cycles: 6, mode: 'indirectX' },
-    'F1': { inst: 'SBC', bytes: 2, cycles: 5, mode: 'indirect_Y' },
+    0xE9: { inst: 'SBC', bytes: 2, cycles: 2, mode: 'immediate' },
+    0xE5: { inst: 'SBC', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0xF5: { inst: 'SBC', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0xED: { inst: 'SBC', bytes: 3, cycles: 4, mode: 'absolute' },
+    0xFD: { inst: 'SBC', bytes: 3, cycles: 4, mode: 'absoluteX', pageCrossing: 1 },
+    0xF9: { inst: 'SBC', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
+    0xE1: { inst: 'SBC', bytes: 2, cycles: 6, mode: 'indirectX' },
+    0xF1: { inst: 'SBC', bytes: 2, cycles: 5, mode: 'indirect_Y' },
     /* SEC 1 */
-    '38': { inst: 'SEC', bytes: 1, cycles: 2, mode: 'implied' },
+    0x38: { inst: 'SEC', bytes: 1, cycles: 2, mode: 'implied' },
     /* SED 1 */
-    'F8': { inst: 'SED', bytes: 1, cycles: 2, mode: 'implied' },
+    0xF8: { inst: 'SED', bytes: 1, cycles: 2, mode: 'implied' },
     /* SEI 1 */
-    '78': { inst: 'SEI', bytes: 1, cycles: 2, mode: 'implied' },
+    0x78: { inst: 'SEI', bytes: 1, cycles: 2, mode: 'implied' },
     /* STA 7 */
-    '85': { inst: 'STA', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    '95': { inst: 'STA', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    '80': { inst: 'STA', bytes: 3, cycles: 4, mode: 'absolute' },
-    '9D': { inst: 'STA', bytes: 3, cycles: 5, mode: 'absoluteX' },
-    '99': { inst: 'STA', bytes: 3, cycles: 5, mode: 'absoluteY' },
-    '81': { inst: 'STA', bytes: 2, cycles: 6, mode: 'indirectX' },
-    '91': { inst: 'STA', bytes: 2, cycles: 6, mode: 'indirect_Y' },
+    0x85: { inst: 'STA', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0x95: { inst: 'STA', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0x8D: { inst: 'STA', bytes: 3, cycles: 4, mode: 'absolute' },
+    0x9D: { inst: 'STA', bytes: 3, cycles: 5, mode: 'absoluteX' },
+    0x99: { inst: 'STA', bytes: 3, cycles: 5, mode: 'absoluteY' },
+    0x81: { inst: 'STA', bytes: 2, cycles: 6, mode: 'indirectX' },
+    0x91: { inst: 'STA', bytes: 2, cycles: 6, mode: 'indirect_Y' },
     /* STX 3 */
-    '86': { inst: 'STX', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    '96': { inst: 'STX', bytes: 2, cycles: 4, mode: 'zeroPageY' },
-    '8E': { inst: 'STX', bytes: 3, cycles: 4, mode: 'absolute' },
+    0x86: { inst: 'STX', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0x96: { inst: 'STX', bytes: 2, cycles: 4, mode: 'zeroPageY' },
+    0x8E: { inst: 'STX', bytes: 3, cycles: 4, mode: 'absolute' },
     /* STY 3 */
-    '84': { inst: 'STY', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    '94': { inst: 'STY', bytes: 2, cycles: 4, mode: 'zeroPageX' },
-    '8C': { inst: 'STY', bytes: 3, cycles: 4, mode: 'absolute' },
+    0x84: { inst: 'STY', bytes: 2, cycles: 3, mode: 'zeroPage' },
+    0x94: { inst: 'STY', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0x8C: { inst: 'STY', bytes: 3, cycles: 4, mode: 'absolute' },
     /* TAX 1 */
-    'AA': { inst: 'TAX', bytes: 1, cycles: 2, mode: 'implied'},
+    0xAA: { inst: 'TAX', bytes: 1, cycles: 2, mode: 'implied'},
     /* TAY 1*/
-    'A8': { inst: 'TAY', bytes: 1, cycles: 2, mode: 'implied' },
+    0xA8: { inst: 'TAY', bytes: 1, cycles: 2, mode: 'implied' },
     /* TSX 1 */
-    'BA': { inst: 'TSX', bytes: 1, cycles: 2, mode: 'implied' },
+    0xBA: { inst: 'TSX', bytes: 1, cycles: 2, mode: 'implied' },
     /* TXA 1 */
-    '8A': { inst: 'TXA', bytes: 1, cycles: 2, mode: 'implied' },
+    0x8A: { inst: 'TXA', bytes: 1, cycles: 2, mode: 'implied' },
     /* TXS 1 */
-    '9A': { inst: 'TXS', bytes: 1, cycles: 2, mode: 'implied' },
+    0x9A: { inst: 'TXS', bytes: 1, cycles: 2, mode: 'implied' },
     /* TYA 1 */
-    '98': { inst: 'TYA', bytes: 1, cycles: 2, mode: 'implied' }
+    0x98: { inst: 'TYA', bytes: 1, cycles: 2, mode: 'implied' }
   }
 
   function pagesDiffer(a, b) {
@@ -718,15 +724,20 @@ const CPU = function(CPUMEM) {
   const CHANNELS = 0x4015;
 
   function writeMem(addr, v) {
-    CPU.MEM[addr] = v;
+    console.log(addr)
+    return CPU.MEM.write(addr, v);
+    //CPU.MEM[addr] = v;
   }
 
   function readMem(addr) {
-    return CPU.MEM[addr];
+    return CPU.MEM.read(addr);
+    //return CPU.MEM[addr];
   }
 
   const CPU = {
+    MEM: null,
     reset: function() {
+      REG_PC = Read16(0xFFFC);
       REG_STA = 0x34;
       REG_A = REG_X = REG_Y = 0;
       REG_SP = 0xFD;
@@ -743,7 +754,7 @@ const CPU = function(CPUMEM) {
       //}
       //this.reset();
     //},
-    frame: function() {
+    cycle: function() {
       switch (interrupt) {
         case interruptNMI:
           REG_PC = NMI(); break;
@@ -751,21 +762,28 @@ const CPU = function(CPUMEM) {
           REG_PC = IRQ(); break;
       }
 
-      let inst = OpcodeSet[getSOpcode(REG_PC)];
+      let inst = OpcodeSet[Read(REG_PC)];
       let operand;
 
+      console.log(inst.inst + ' ' + Read(REG_PC))
+      console.log('+++++++++++++++')
       if (inst.bytes === 1) {
         operand = null;
       } else if (inst.bytes === 2) {
-        operand = getSOpcode(REG_PC + 1);
+        operand = Read(REG_PC + 1);
       } else {
-        operand = getLOpcode(REG_PC + 1);
+        operand = Read16(REG_PC + 1);
       }
 
       REG_PC += inst.bytes;
 
       let value = Operand[inst.mode](operand)
+      //if (value === undefined) {
+        //throw new Error('operand: ' + operand + ' inst: ' + inst.inst + ' mode: ' + inst.mode)
+      //}
       let newPC = InstructionAction[inst.inst](value, inst.mode);
+      console.log('REG_X: ' + REG_X)
+      console.log('REG_SP: ' + REG_SP)
 
       if (newPC !== undefined) {
         REG_PC = newPC;
@@ -787,22 +805,32 @@ const CPU = function(CPUMEM) {
       cycleCount += inst.cycles;
       cycleCount += InterruptSet[interrupt].cycles;
       interrupt = interruptNone;
+      console.log('======================')
 
       return cycleCount;
     }
   }
-  function getSOpcode(index) {
+
+  function Read(index) {
     //return this.ROM[index];
     return readMem(index);
-  },
-  function getLOpcode(index) {
+  }
+  function Read16(index) {
     //return this.ROM[index] | (this.ROM[index + 1] << 8);
     return readMem(index) | (readMem(index + 1) << 8);
-  },
+  }
+
+  function Read16bug(addr) {
+    let a = addr;
+    let b = (a & 0xFF00) | (a + 1);
+    let lo = Read(a);
+    let hi = Read(b);
+    return (hi << 8) | lo;
+  }
 
   const Operand = {
     immediate: function(v) {
-      curAddr = null;
+      curAddr = REG_PC + 1;
       return v;
     },
     zeroPage: function(v) {
@@ -821,7 +849,7 @@ const CPU = function(CPUMEM) {
     },
     absolute: function(v) {
       curAddr = v;
-      return readMem(v);
+      return Read16(v);
     },
     absoluteX: function(v) {
       let addr = (v + REG_X) & 0xFFFF;
@@ -836,28 +864,32 @@ const CPU = function(CPUMEM) {
       return readMem(addr);
     },
     indirect: function(v) {
-      let addr = readMem(v);
+      let addr = Read16bug(v);
       curAddr = addr;
       return readMem(addr);
     },
     indirectX: function(v) {
-      let addr1 = v + REG_X;
-      let addr2 = parseInt('0x' + readMem(addr1 + 1) + readMem(addr1), 16);
-      curAddr = addr2;
-      return readMem(addr2);
+      let addr = Read16bug(v + REG_X);
+      curAddr = addr;
+      return readMem(addr);
     },
     indirect_Y: function(v) {
-      let addr1 = parseInt('0x' + readMem(v + 1) + readMem(v), 16);
-      let addr2 = addr1 + REG_Y;
-      curAddr = addr2;
+      let addr = Read16bug(v) + REG_Y;
+      curAddr = addr;
       pageCrossed = pagesDiffer(addr - REG_Y, addr);
-      return readMem(addr2);
+      return readMem(addr);
     },
     relative: function(v) {
-      let offset = (v & 0x80) >> 7 ? -(v & 0x7F) : v & 0x7F;
-      // REG_PC += val;
-      curAddr = null;
-      let addr = offset + REG_PC
+      //let offset = (v & 0x80) >> 7 ? -(v & 0x7F) : v & 0x7F;
+      //// REG_PC += val;
+      //curAddr = null;
+      //let addr = offset + REG_PC
+      if (v < 0x80) {
+        addr = REG_PC + 2 + v;
+      } else {
+        addr = REG_PC + 2 + v - 0x100;
+      }
+      curAddr = addr;
       inSamePage = pagesDiffer(REG_PC, addr);
       return addr;
     },
@@ -865,6 +897,7 @@ const CPU = function(CPUMEM) {
       return REG_ACC;
     },
     implied: function(v) {
+      return null;
     }
   }
 
