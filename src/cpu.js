@@ -97,6 +97,16 @@ const CPU = function(CPUMEM) {
     F_SIGN = (REG_STA & MASK.SIGN) >> 7;
   }
 
+  function setZ(v){
+    F_ZERO = (v === 0) ? 1 : 0;
+  }
+  function setN(v) {
+    F_SIGN = (v >> 7) & 0x1;
+  }
+  function setZN(v) {
+    setZ(v);
+    setN(v);
+  }
   const setF = {
     // set if the add produced a carry, or if the subtraction don't produced a borrow. also holds bits after a logical shift. (the description from nesdev.com/6502.txt, and it is contrary with nesdev.com/6502guid.txt)
     // 【CARRY 这样写可能不正确】
@@ -109,14 +119,10 @@ const CPU = function(CPUMEM) {
       }
     },
     // set if the result of the last operation (load/inc/dec/add/sub) was zero
-    // ZERO 跟别人写法不一样
     ZERO: function(v) {
-      //F_ZERO = (v & 0xFF) ? 0 : 1;
-      F_ZERO = (v === 0) ? 1 : 0;
     },
     // set if bit 7 of the accumulator is set
     SIGN: function(v) {
-      F_SIGN = (v >> 7) & 0x1;
     },
     // set if the addition of two like-signed numbers or the subtraction of two unlick-signed numbers produces a result greater than +127 or less than -128
     // 参考别人的代码，不过还是不明白 OVERFLOW 为啥这样写
@@ -126,26 +132,43 @@ const CPU = function(CPUMEM) {
     }
   }
 
+  function int8(v) {
+    return v & 0xFF;
+  }
+
+  function compare(a, b) {
+    setZN(a - b);
+    if (a >= b) {
+      F_CARRY = 1;
+    } else {
+      F_CARRY = 0;
+    }
+  }
+
   // PC 值不能在其中发生改变
   // return 要增加的PC数，如果为 undefined，则增长默认值
   const InstructionAction = {
     // N Z C V
     ADC: function(v) {
+      let a = REG_ACC, b = v, c = F_CARRY;
       let temp = REG_ACC + v + F_CARRY;
-
-      setF.CARRY(temp, 'add');
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      setF.OVERFLOW(REG_ACC, v, temp);
-
-      REG_ACC = temp & 0xFF;
+      REG_ACC = int8(temp);
+      setZN(REG_ACC);
+      if (temp > 0xFF) {
+        F_CARRY = 1;
+      } else {
+        F_CARRY = 0;
+      }
+      if (((a ^ b) & 0x80 === 0) && ((a ^ REG_ACC) & 0x80 !== 0)) {
+        F_OVERFLOW = 1;
+      } else {
+        F_OVERFLOW = 0;
+      }
     },
     // N Z
     AND: function(v) {
-      let temp = REG_ACC & v;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      REG_ACC = temp;
+      REG_ACC = REG_ACC & v;
+      setZN(REG_ACC);
     },
     // N Z C
     ASL: function(v, addrMode) {
@@ -153,15 +176,12 @@ const CPU = function(CPUMEM) {
       if (addrMode === 'accumulator') {
         F_CARRY = (REG_ACC >> 7) & 1;
         REG_ACC <<= 1;
-        setF.SIGN(REG_ACC);
-        setF.ZERO(REG_ACC);
+        setZN(REG_ACC);
       } else {
+        F_CARRY = (v >> 7) & 1;
         v <<= 1;
-        setF.CARRY(v, 'add');
-        v &= 0xFF;
-        setF.SIGN(v);
-        setF.ZERO(v);
         writeMem(curAddr, v);
+        setZN(v);
       }
     },
     BCC: function(v) {
@@ -175,8 +195,8 @@ const CPU = function(CPUMEM) {
     },
     // N Z V
     BIT: function(v) {
-      setF.ZERO(REG_ACC & v);
-      F_SIGN = v >> 7;
+      setZ(REG_ACC & v);
+      setN(v);
       F_OVERFLOW = (v >> 6) & 0x1;
     },
     BMI: function(v) {
@@ -190,7 +210,7 @@ const CPU = function(CPUMEM) {
     },
     // I B
     BRK: function(v) {
-      interrupt = interruptIRQ;
+      triggerIRQ();
       F_BRK = 1;
       F_INTERRUPT = 1;
       //return readMem(0xFFFE) | (readMem(0xFFFF) << 8);
@@ -215,76 +235,55 @@ const CPU = function(CPUMEM) {
     },
     // N Z C
     CMP: function(v) {
-      let temp = REG_ACC - v;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      setF.CARRY(temp, 'sub');
+      compare(REG_ACC, v);
     },
     // N Z C
     CPX: function(v) {
-      let temp = REG_X - v;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      setF.CARRY(temp, 'sub');
+      compare(REG_X, v);
     },
     // N Z C
     CPY: function(v) {
-      let temp = REG_Y - v;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      setF.CARRY(temp, 'sub');
+      compare(REG_Y, v);
     },
     // N Z
     DEC: function(v) {
-      let temp = v - 1;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      writeMem(curAddr, temp);
+      v = v - 1;
+      setZN(v);
+      writeMem(curAddr, v);
     },
     // N Z
     DEX: function(v) {
-      let temp = v - 1;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      REG_X = temp;
+      REG_X--;
+      setZN(REG_X);
     },
     // N Z
     DEY: function(v) {
-      let temp = v - 1;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      REG_Y = temp;
+      REG_Y--;
+      setZN(REG_Y);
     },
     // N Z
     EOR: function(v) {
-      let temp = REG_ACC ^ v;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      REG_ACC = temp;
+      REG_ACC = REG_ACC ^ v;
+      setZN(REG_ACC);
     },
     // N Z
     INC: function(v) {
-      let temp = v + 1;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      writeMem(curAddr, temp);
+      v = v + 1;
+      setZN(v);
+      writeMem(curAddr, v);
     },
     // N Z
     INX: function(v) {
-      let temp = v + 1;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      REG_X = temp;
+      REG_X++;
+      setZN(REG_X);
     },
     // N Z
     INY: function(v) {
-      let temp = v + 1;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      REG_Y = temp;
+      REG_Y++;
+      setZN(REG_Y);
     },
     JMP: function(v) {
-      return readMem(REG_PC - 2) | (readMem(REG_PC - 1) << 8);
+      return curAddr;
     },
     // 实现存疑
     JSR: function(v) {
@@ -293,48 +292,45 @@ const CPU = function(CPUMEM) {
       //PUSH(temp & 0xFF);
       //http://www.masswerk.at/6502/6502_instruction_set.html#JSR
       //the doc above shows JSR should push (PC+2) instead of PC+2
-      PUSH(v >> 8);
+      PUSH16(REG_PC - 1);
+      return curAddr;
 
-      return v;
+      return curAddr;
     },
     // N Z
     LDA: function(v) {
-      setF.SIGN(v);
-      setF.ZERO(v);
+      setZN(v);
       REG_ACC = v;
     },
     // N Z
     LDX: function(v) {
-      setF.SIGN(v);
-      setF.ZERO(v);
+      setZN(v)
       REG_X = v;
     },
     // N Z
     LDY: function(v) {
-      setF.SIGN(v);
-      setF.ZERO(v);
+      setZN(v);
       REG_Y = v;
     },
     // N Z C
     LSR: function(v, addrMode) {
-      let temp = v >>> 1;
-      F_SIGN = 0;
-      setF.ZERO(temp);
-      F_CARRY = v & 0x1;
       if (addrMode === 'accumulator') {
-        REG_ACC = temp;
+        F_CARRY = REG_ACC & 1;
+        REG_ACC >>= 1;
+        setZN(REG_ACC);
       } else {
+        F_CARRY = v & 1;
+        v >>= 1;
         writeMem(curAddr, temp);
+        setZN(v);
       }
     },
     NOP: function(v) {
     },
     // N Z
     ORA: function(v) {
-      let temp = REG_ACC | v;
-      setF.SIGN(temp);
-      setF.ZERO(temp);
-      REG_ACC = temp;
+      REG_ACC = REG_ACC | v;
+      setZN(REG_ACC);
     },
     PHA: function(v) {
       PUSH(REG_ACC);
@@ -346,40 +342,43 @@ const CPU = function(CPUMEM) {
     // N Z
     PLA: function(v) {
       REG_ACC = PULL();
-      setF.SIGN(REG_ACC);
-      setF.ZERO(REG_ACC);
+      setZN(REG_ACC);
     },
     PLP: function(v) {
-      detachStatus(PULL());
+      detachStatus(PULL() & 0xEF | 0x20);
     },
     // N Z C
     ROL: function(v) {
-      v = (v << 1) | F_CARRY;
-      setF.CARRY(v, 'add');
-      v &= 0xFF;
-      setF.ZERO(v);
-      setF.SIGN(v);
       if (addrMode === 'accumulator') {
-        REG_ACC = v;
+        let c = F_CARRY;
+        F_CARRY = (REG_ACC >> 7) & 1;
+        REG_ACC = (REG_ACC << 1) | c;
+        setZN(REG_ACC);
       } else {
+        let c = F_CARRY;
+        F_CARRY = (v >> 7) & 1;
+        v = (v << 1) | c;
         writeMem(curAddr, v);
+        setZN(v);
       }
     },
     // N Z C
     ROR: function(v) {
-      let temp = (v >>> 1) | (F_CARRY << 7);
-      F_CARRY = v & 0x1;
-      setF.ZERO(temp);
-      setF.SIGN(temp);
       if (addrMode === 'accumulator') {
-        REG_ACC = temp;
+        let c = F_CARRY;
+        F_CARRY = REG_ACC & 1;
+        REG_ACC = (REG_ACC >> 1) | (c << 7);
       } else {
-        writeMem(curAddr, temp);
+        let c = F_CARRY;
+        F_CARRY = v & 1;
+        v = (v >> 1) | (c << 7);
+        writeMem(curAddr, v);
+        setZN(v);
       }
     },
     // From Stack
     RTI: function(v) {
-      REG_STA = PULL();
+      REG_STA = PULL() & 0xEF | 0x20;
       detachStatus();
       return PULL16();
     },
@@ -389,20 +388,19 @@ const CPU = function(CPUMEM) {
     // N Z C V
     // 这里的实现参考 6502.txt
     SBC: function(v) {
-      let temp = REG_ACC - v - (F_CARRY ? 0 : 1);
-      setF.SIGN(temp);
-      setF.ZERO(temp & 0xFF);
-      setF.OVERFLOW(REG_ACC, v, temp);
-      if (F_DECIMAL) {
-        if ((REG_ACC & 0xF) - (F_CARRY ? 0 : 1) < (v & 0xF)) {
-          temp -= 6;
-        }
-        if (temp > 0x99) {
-          temp -= 0x60;
-        }
+      let a = REG_ACC, b = v, c = F_CARRY;
+      REG_ACC = a - b - (1 - c);
+      setZN(REG_ACC);
+      if ((a - b- (1 - c)) >= 0) {
+        F_CARRY = 1;
+      } else {
+        F_CARRY = 0;
       }
-      setF.CARRY(temp, 'sub');
-      REG_ACC = temp & 0xFF;
+      if (((a ^ b) & 0x80 !== 0) && ((a ^ REG_ACC) & 0x80 !== 0)) {
+        F_OVERFLOW = 1;
+      } else {
+        F_OVERFLOW = 0;
+      }
     },
     // C
     SEC: function(v) {
@@ -427,46 +425,41 @@ const CPU = function(CPUMEM) {
     },
     // N Z
     TAX: function(v) {
-      setF.ZERO(REG_ACC);
-      setF.SIGN(REG_ACC);
       REG_X = REG_ACC;
+      setZN(REG_X);
     },
     // N Z
     TAY: function(v) {
-      setF.ZERO(REG_ACC);
-      setF.SIGN(REG_ACC);
       REG_Y = REG_ACC;
+      setZN(REG_Y);
     },
     // N Z
     TSX: function(v) {
-      setF.ZERO(REG_SP);
-      setF.SIGN(REG_SP);
       REG_X = REG_SP;
+      setZN(REG_X);
     },
     // N Z
     TXA: function(v) {
-      setF.ZERO(REG_X);
-      setF.SIGN(REG_X);
       REG_ACC = REG_X;
+      setZN(REG_ACC);
     },
     TXS: function(v) {
       REG_SP = REG_X;
     },
     // N Z
     TYA: function(v) {
-      setF.ZERO(REG_Y);
-      setF.SIGN(REG_Y);
       REG_ACC = REG_Y;
+      setZN(REG_ACC);
     }
   }
 
   function PULL() {
-    return readMem(REG_SP++);
+    return readMem(++REG_SP);
   }
 
   function PUSH(v) {
     console.log('REG_SP: ' + REG_SP)
-    writeMem(--REG_SP, v);
+    writeMem(REG_SP--, v);
   }
 
   function PUSH16(v) {
@@ -486,6 +479,8 @@ const CPU = function(CPUMEM) {
     setStatus();
     PUSH16(REG_PC);
     PUSH(REG_STA);
+    interrupt = interruptNone;
+    F_INTERRUPT = 1;
 
     return Read16(NMI_Vector);
   }
@@ -495,6 +490,7 @@ const CPU = function(CPUMEM) {
     PUSH16(REG_PC);
     PUSH(REG_STA);
     F_INTERRUPT = 1;
+    interrupt = interruptNone;
 
     return Read16(IRQ_Vector);
   }
@@ -580,7 +576,7 @@ const CPU = function(CPUMEM) {
     /* DEC 4 */
     0xC6: { inst: 'DEC', bytes: 2, cycles: 5, mode: 'zeroPage' },
     0xD6: { inst: 'DEC', bytes: 2, cycles: 6, mode: 'zeroPageX' },
-    0xCE: { inst: 'DEC', bytes: 3, cycles: 6, mode: 'absolute' },
+    0xCE: { inst: 'DEC', bytes: 3, cycles: 3, mode: 'absolute' },
     0xDE: { inst: 'DEC', bytes: 3, cycles: 7, mode: 'absoluteX' },
     /* DEX 1 */
     0xCA: { inst: 'DEX', bytes: 1, cycles: 2, mode: 'implied' },
@@ -621,7 +617,7 @@ const CPU = function(CPUMEM) {
     /* LDX 5 */
     0xA2: { inst: 'LDX', bytes: 2, cycles: 2, mode: 'immediate' },
     0xA6: { inst: 'LDX', bytes: 2, cycles: 3, mode: 'zeroPage' },
-    0xB6: { inst: 'LDX', bytes: 2, cycles: 4, mode: 'zeroPageX' },
+    0xB6: { inst: 'LDX', bytes: 2, cycles: 4, mode: 'zeroPageY' },
     0xAE: { inst: 'LDX', bytes: 3, cycles: 4, mode: 'absolute' },
     0xBE: { inst: 'LDX', bytes: 3, cycles: 4, mode: 'absoluteY', pageCrossing: 1 },
     /* LDY 5 */
@@ -724,7 +720,6 @@ const CPU = function(CPUMEM) {
   const CHANNELS = 0x4015;
 
   function writeMem(addr, v) {
-    console.log(addr)
     return CPU.MEM.write(addr, v);
     //CPU.MEM[addr] = v;
   }
@@ -738,8 +733,9 @@ const CPU = function(CPUMEM) {
     MEM: null,
     reset: function() {
       REG_PC = Read16(0xFFFC);
+      console.log('REG_PC: ' + REG_PC)
       REG_STA = 0x34;
-      REG_A = REG_X = REG_Y = 0;
+      REG_ACC = REG_X = REG_Y = 0;
       REG_SP = 0xFD;
       writeMem(FRAME_IRQ, 0);
       writeMem(CHANNELS, 0);
@@ -757,15 +753,18 @@ const CPU = function(CPUMEM) {
     cycle: function() {
       switch (interrupt) {
         case interruptNMI:
-          REG_PC = NMI(); break;
+          REG_PC = NMI();
+          break;
         case interruptIRQ:
-          REG_PC = IRQ(); break;
+          REG_PC = IRQ();
+          break;
       }
 
-      let inst = OpcodeSet[Read(REG_PC)];
+      let opcode = Read(REG_PC);
+      let inst = OpcodeSet[opcode];
       let operand;
 
-      console.log(inst.inst + ' ' + Read(REG_PC))
+      console.log(inst.inst + ' ' + opcode + ' ' + inst.mode);
       console.log('+++++++++++++++')
       if (inst.bytes === 1) {
         operand = null;
@@ -782,12 +781,17 @@ const CPU = function(CPUMEM) {
         //throw new Error('operand: ' + operand + ' inst: ' + inst.inst + ' mode: ' + inst.mode)
       //}
       let newPC = InstructionAction[inst.inst](value, inst.mode);
-      console.log('REG_X: ' + REG_X)
-      console.log('REG_SP: ' + REG_SP)
-
       if (newPC !== undefined) {
         REG_PC = newPC;
       } 
+
+      console.log('X: ' + REG_X)
+      console.log('SP: ' + REG_SP)
+      console.log('Y: ' + REG_Y)
+      console.log('PC: ' + REG_PC)
+      console.log('ACC: ' + REG_ACC)
+      detachStatus();
+      console.log('STATUS: ' + REG_STA)
 
       if (pageCrossed) {
         cycleCount += inst.pageCrossing;
@@ -804,7 +808,6 @@ const CPU = function(CPUMEM) {
 
       cycleCount += inst.cycles;
       cycleCount += InterruptSet[interrupt].cycles;
-      interrupt = interruptNone;
       console.log('======================')
 
       return cycleCount;
@@ -849,6 +852,7 @@ const CPU = function(CPUMEM) {
     },
     absolute: function(v) {
       curAddr = v;
+      console.log(curAddr)
       return Read16(v);
     },
     absoluteX: function(v) {

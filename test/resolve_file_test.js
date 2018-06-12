@@ -5,7 +5,7 @@ import describe from 'test/tools.js';
 if (global && require) {
   const fs = eval('require')('fs');
 
-  const romPath = './rom/test_cpu_flag_concurrency.nes'; // '../rom/cpu_dummy_reads.nes'
+  const romPath = './rom/dajingang.nes'; // '../rom/cpu_dummy_reads.nes'
 
   console.log('NESMagicMumber: ' + NESMagicMumber);
 

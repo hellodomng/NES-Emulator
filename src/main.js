@@ -1,12 +1,23 @@
 ;(function() {
   let cartridge, mapper, cpu, ppu, mem;
 
-  loadBinary('./rom/color_test.nes', (err, data) => {
+  loadBinary('./rom/dajingang.nes', (err, data) => {
     if (err) {
       throw err;
     } else {
       //console.log(data.toString('binary'));
       Load(data);
+    }
+  });
+
+  let cpuCycles = 0;
+  document.getElementById('step-button').addEventListener('click', function() {
+    let frame = ppu.getFrame();
+    if (frame === ppu.getFrame()) {
+      cpuCycles += Step();
+    } else {
+      cpuCycles = 0;
+      cpuCycles += Step();
     }
   });
 
@@ -22,9 +33,9 @@
     cpu.powerUp();
     ppu.reset();
 
-    while(1) {
-      StepFrame();
-    }
+    //while(1) {
+      //StepFrame();
+    //}
   }
 
   function Step() {

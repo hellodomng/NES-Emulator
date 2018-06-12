@@ -1,5 +1,8 @@
 const Memory = function(PPU, Cartridge, Mapper) {
   const CPUMEM = new Array(0x2000);
+  for (let i = 0; i < CPUMEM.length; i++) {
+    CPUMEM[i] = 0xFF;
+  }
 
   function CPUMEMRead(addr) {
     switch(true) {
@@ -57,6 +60,9 @@ const Memory = function(PPU, Cartridge, Mapper) {
 
 
   const PPUMEM = new Array(0x4000);
+  for (let i = 0; i < PPUMEM.length; i++) {
+    PPUMEM[i] = 0;
+  }
 
   function PPUMEMRead(addr) {
     addr = addr % 0x4000;
